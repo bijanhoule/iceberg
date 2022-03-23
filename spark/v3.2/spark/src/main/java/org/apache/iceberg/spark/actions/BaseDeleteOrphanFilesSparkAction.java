@@ -93,6 +93,8 @@ public class BaseDeleteOrphanFilesSparkAction
   private final int partitionDiscoveryParallelism;
   private final Table table;
 
+
+  private Dataset<Row> providedActualFilesDF;
   private String location = null;
   private long olderThanTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(3);
   private Consumer<String> deleteFunc = new Consumer<String>() {
@@ -108,6 +110,8 @@ public class BaseDeleteOrphanFilesSparkAction
     super(spark);
 
     this.hadoopConf = new SerializableConfiguration(spark.sessionState().newHadoopConf());
+    // Another "quick" way to reduce the number of list tasks could be by tuning this configuration,
+    // `spark.sql.sources.parallelPartitionDiscovery.parallelism`, which is 10000 by default.
     this.partitionDiscoveryParallelism = spark.sessionState().conf().parallelPartitionDiscoveryParallelism();
     this.table = table;
     this.location = table.location();
@@ -146,6 +150,33 @@ public class BaseDeleteOrphanFilesSparkAction
     return this;
   }
 
+  // public BaseDeleteOrphanFilesSparkAction validFilesDF()
+
+  /**
+   * Provide a dataframe containing all of the paths of actual files in the file system
+   * located at `location`, in a column called `file_path` with string type.
+   *
+   * We also need to take into account the fact that the default job has a filter on the "older_than"
+   * information from the file (see third line of buildActualFileDf() ).
+   *
+   * Likely we would just say that this dataframe needs to include only files that passed the predicate already,
+   * or have the columns and information in it.
+   *
+   * That predicate is not configurable other than the `older_than` timestamp that the predicate uses,
+   * so users can either pass a dataframe of strings (representing actual full file paths, like s3://...../*.parquet),
+   * or _possibly_ a dataframe with the file name and some timestamp value to be filtered on.
+   *
+   * I would argue that since we're already allowing the user to pass in the dataframe they want, they can
+   * filter it themselves as well. But that can be changed based on your experience while developing.
+   */
+  // Goal - to remove calls to `listDirsRecursively` and `listDirRecursively`.
+  //      - happens to retrieve the "Actual Files", which could be obtainable in many ways
+  public BaseDeleteOrphanFilesSparkAction withActualFilesDF(Dataset<Row> newActualFilesDF) {
+    this.providedActualFilesDF = newActualFilesDF;
+    // this.actualFilesDF.createOrReplaceTempView("actual_files_%s");
+    return this;
+  }
+
   @Override
   public DeleteOrphanFiles.Result execute() {
     JobGroupInfo info = newJobGroupInfo("REMOVE-ORPHAN-FILES", jobDesc());
@@ -165,7 +196,10 @@ public class BaseDeleteOrphanFilesSparkAction
     Dataset<Row> validContentFileDF = buildValidContentFileDF(table);
     Dataset<Row> validMetadataFileDF = buildValidMetadataFileDF(table);
     Dataset<Row> validFileDF = validContentFileDF.union(validMetadataFileDF);
-    Dataset<Row> actualFileDF = buildActualFileDF();
+    // If there are serialization issues, let me know as we can possibly pass in a function (spark session) -> dataframe
+    // or explicitly broadcast it. But I don't think that's going to be necessary.
+    Dataset<Row> actualFileDF = this.providedActualFilesDF == null ? buildActualFileDF() : providedActualFilesDF;
+    // Dataset<Row> actualFileDF = buildActualFileDF();
 
     Column actualFileName = filenameUDF.apply(actualFileDF.col("file_path"));
     Column validFileName = filenameUDF.apply(validFileDF.col("file_path"));
@@ -192,6 +226,11 @@ public class BaseDeleteOrphanFilesSparkAction
 
     Predicate<FileStatus> predicate = file -> file.getModificationTime() < olderThanTimestamp;
 
+    // hdfs://hoohaa/rauls/tbl/data/id=1/foo_bucket=8/dt_month=12
+    //
+    // Object Storage Location Provider path (adds randomization).
+    // s3://hoohaa/warehouse/table/data/0a71f597/<file.parquet>
+    //
     // list at most 3 levels and only dirs that have less than 10 direct sub dirs on the driver
     listDirRecursively(location, predicate, hadoopConf.value(), 3, 10, subDirs, matchingFiles);
 
