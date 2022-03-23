@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -93,6 +94,8 @@ public class BaseDeleteOrphanFilesSparkAction
   private final int partitionDiscoveryParallelism;
   private final Table table;
 
+
+  private Dataset<Row> actualFilesDF;
   private String location = null;
   private long olderThanTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(3);
   private Consumer<String> deleteFunc = new Consumer<String>() {
@@ -146,6 +149,20 @@ public class BaseDeleteOrphanFilesSparkAction
     return this;
   }
 
+  // public BaseDeleteOrphanFilesSparkAction validFilesDF()
+
+  /**
+   * Provide a dataframe containing all of the paths of actual files in the file system
+   * located at `location`, in a column called `file_path` with string type.
+   */
+  // Goal - to remove calls to `listDirsRecursively` and `listDirRecursively`.
+  //      - happens to retrieve the "Actual Files", which could be obtainable in many ways
+  public BaseDeleteOrphanFilesSparkAction withActualFilesDF(Dataset<Row> newActualFilesDF) {
+    this.actualFilesDF = newActualFilesDF;
+    // this.actualFilesDF.createOrReplaceTempView("actual_files_%s");
+    return this;
+  }
+
   @Override
   public DeleteOrphanFiles.Result execute() {
     JobGroupInfo info = newJobGroupInfo("REMOVE-ORPHAN-FILES", jobDesc());
@@ -165,7 +182,8 @@ public class BaseDeleteOrphanFilesSparkAction
     Dataset<Row> validContentFileDF = buildValidContentFileDF(table);
     Dataset<Row> validMetadataFileDF = buildValidMetadataFileDF(table);
     Dataset<Row> validFileDF = validContentFileDF.union(validMetadataFileDF);
-    Dataset<Row> actualFileDF = buildActualFileDF();
+    Dataset<Row> actualFileDF = this.actualFilesDF == null ? buildActualFileDF() : actualFilesDF;
+    // Dataset<Row> actualFileDF = buildActualFileDF();
 
     Column actualFileName = filenameUDF.apply(actualFileDF.col("file_path"));
     Column validFileName = filenameUDF.apply(validFileDF.col("file_path"));
@@ -192,6 +210,11 @@ public class BaseDeleteOrphanFilesSparkAction
 
     Predicate<FileStatus> predicate = file -> file.getModificationTime() < olderThanTimestamp;
 
+    // hdfs://hoohaa/rauls/tbl/data/id=1/foo_bucket=8/dt_month=12
+    // hdfs://hoohaa/rauls/89asrdfh8/
+    //
+    // s3://tabular-wh-us-west-2-infra/17914088-a5b0-43cd-8382-f2ae11122f0c/1c8f9256-86f9-4bfa-84ff-83832d27744c/data/0a71f597/00000-255-bf7d1fe2-13ce-49be-85e7-eba6fb92cea4-00001.parquet
+    //
     // list at most 3 levels and only dirs that have less than 10 direct sub dirs on the driver
     listDirRecursively(location, predicate, hadoopConf.value(), 3, 10, subDirs, matchingFiles);
 

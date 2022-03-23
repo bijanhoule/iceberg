@@ -95,6 +95,9 @@ public class LocationProviders {
     }
   }
 
+  // The other option to reduce the amount of listing would be to control the number of buckets into this hash
+  // function, and thus the # of possible path randomizing "directory" fragments, which contributes to a lot of
+  // listing.
   static class ObjectStoreLocationProvider implements LocationProvider {
     private static final Transform<String, Integer> HASH_FUNC = Transforms
         .bucket(Types.StringType.get(), Integer.MAX_VALUE);
