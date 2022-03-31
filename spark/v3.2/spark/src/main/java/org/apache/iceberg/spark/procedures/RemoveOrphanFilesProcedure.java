@@ -19,6 +19,8 @@
 
 package org.apache.iceberg.spark.procedures;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.actions.DeleteOrphanFiles;
@@ -51,12 +53,6 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
       ProcedureParameter.optional("location", DataTypes.StringType),
       ProcedureParameter.optional("dry_run", DataTypes.BooleanType),
       ProcedureParameter.optional("max_concurrent_deletes", DataTypes.IntegerType),
-      // Name of the temp view, accessible via
-      //   spark.table($actual_file_table), with the file paths.
-      //
-      // This would require that the user does
-      //    val df = spark.range(100).filter(....).toDF("file_path")
-      //    df.createOrReplaceTempView("actual_files_as_table")
       ProcedureParameter.optional("actual_file_table", DataTypes.StringType)
   };
 
@@ -99,6 +95,11 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
     Preconditions.checkArgument(maxConcurrentDeletes == null || maxConcurrentDeletes > 0,
             "max_concurrent_deletes should have value > 0,  value: " + maxConcurrentDeletes);
 
+    Preconditions.checkArgument(
+            tableWithActualFilePaths == null || (location == null && olderThanMillis == null),
+            "actual_file_table cannot be used with `location` or `older_than`"
+    );
+
     return withIcebergTable(tableIdent, table -> {
       DeleteOrphanFiles action = actions().deleteOrphanFiles(table);
 
@@ -122,8 +123,16 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
         action.executeDeleteWith(executorService(maxConcurrentDeletes, "remove-orphans"));
       }
 
-      // TODO - Validate that the table exists, validate its schema is correct (should have one column of strings).
       if (tableWithActualFilePaths != null) {
+        Preconditions.checkArgument(spark().catalog().tableExists(tableWithActualFilePaths),
+                "actual_file_table `" + tableWithActualFilePaths + "` does not exist"
+        );
+
+        List<String> columns = Arrays.asList(spark().table(tableWithActualFilePaths).columns());
+        if (!columns.contains("file_path")) {
+          throw new IllegalArgumentException("actual_file_table should have a 'file_path' column");
+        }
+
         ((BaseDeleteOrphanFilesSparkAction) action).withActualFilesDF(spark().table(tableWithActualFilePaths));
       }
 

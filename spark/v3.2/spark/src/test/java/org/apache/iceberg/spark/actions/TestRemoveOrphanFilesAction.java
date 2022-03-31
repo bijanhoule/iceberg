@@ -143,31 +143,26 @@ public abstract class TestRemoveOrphanFilesAction extends SparkTestBase {
         .execute();
     Assert.assertTrue("Default olderThan interval should be safe", Iterables.isEmpty(result1.orphanFileLocations()));
 
-    // Can presently cast to `BaseDeleteOrphanFilesSparkAction` to get at the `withActualFilesDF`
-    // (or we can try to put it generically into the `DeleteOrphanFiles` action.
-    //
-    // Pass in a dataframe of all of the files built from... whatever, and then ensure it works.
-    //
-    // For this test, as we have `allFiles`, can use that to buiild dataframe
-
-    Dataset<Row> allFilesDF = spark.createDataFrame(allFiles, String.class);
-    DeleteOrphanFiles.Result result2 = ((BaseDeleteOrphanFilesSparkAction) actions.deleteOrphanFiles(table))
-        .olderThan(System.currentTimeMillis())
-        .deleteWith(s -> { })
-        .withActualFilesDF(allFilesDF)
-        .execute();
-
-    // DeleteOrphanFiles.Result result2 = actions.deleteOrphanFiles(table)
-    //     .olderThan(System.currentTimeMillis())
-    //     .deleteWith(s -> { })
-    //     .execute();
+     DeleteOrphanFiles.Result result2 = actions.deleteOrphanFiles(table)
+         .olderThan(System.currentTimeMillis())
+         .deleteWith(s -> { })
+         .execute();
     Assert.assertEquals("Action should find 1 file", invalidFiles, result2.orphanFileLocations());
     Assert.assertTrue("Invalid file should be present", fs.exists(new Path(invalidFiles.get(0))));
 
-    DeleteOrphanFiles.Result result3 = actions.deleteOrphanFiles(table)
+    Dataset<Row> allFilesDF = spark.createDataset(allFiles, Encoders.STRING()).toDF("file_path");
+    DeleteOrphanFiles.Result result3 = ((BaseDeleteOrphanFilesSparkAction) actions.deleteOrphanFiles(table))
+            .deleteWith(s -> { })
+            .withActualFilesDF(allFilesDF)
+            .execute();
+
+    Assert.assertEquals("Action should find 1 file", invalidFiles, result3.orphanFileLocations());
+    Assert.assertTrue("Invalid file should be present", fs.exists(new Path(invalidFiles.get(0))));
+
+    DeleteOrphanFiles.Result result4 = actions.deleteOrphanFiles(table)
         .olderThan(System.currentTimeMillis())
         .execute();
-    Assert.assertEquals("Action should delete 1 file", invalidFiles, result3.orphanFileLocations());
+    Assert.assertEquals("Action should delete 1 file", invalidFiles, result4.orphanFileLocations());
     Assert.assertFalse("Invalid file should not be present", fs.exists(new Path(invalidFiles.get(0))));
 
     List<ThreeColumnRecord> expectedRecords = Lists.newArrayList();

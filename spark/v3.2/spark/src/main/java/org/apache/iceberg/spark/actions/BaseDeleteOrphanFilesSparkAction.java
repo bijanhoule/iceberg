@@ -69,7 +69,14 @@ import static org.apache.iceberg.TableProperties.GC_ENABLED_DEFAULT;
  * removes unreachable files that are older than 3 days using {@link Table#io()}. The behavior can be modified
  * by passing a custom location to {@link #location} and a custom timestamp to {@link #olderThan(long)}.
  * For example, someone might point this action to the data folder to clean up only orphan data files.
- * In addition, there is a way to configure an alternative delete method via {@link #deleteWith(Consumer)}.
+ * <p>
+ * Configure an alternative delete method using {@link #deleteWith(Consumer)}.
+ * <p>
+ * For full control of the set of files being evaluated, use the {@link #withActualFilesDF(Dataset)} argument.  This
+ * skips the directory listing - any files in the actualFilesDF provided which are not found in table metadata will
+ * be deleted.
+ * Not compatible with `location` or `older_than` arguments - this assumes that the provided dataframe of actual files
+ * has been filtered down to the table’s location and only includes files older than a reasonable retention interval.
  * <p>
  * <em>Note:</em> It is dangerous to call this action with a short retention interval as it might corrupt
  * the state of the table if another operation is writing at the same time.
@@ -110,8 +117,6 @@ public class BaseDeleteOrphanFilesSparkAction
     super(spark);
 
     this.hadoopConf = new SerializableConfiguration(spark.sessionState().newHadoopConf());
-    // Another "quick" way to reduce the number of list tasks could be by tuning this configuration,
-    // `spark.sql.sources.parallelPartitionDiscovery.parallelism`, which is 10000 by default.
     this.partitionDiscoveryParallelism = spark.sessionState().conf().parallelPartitionDiscoveryParallelism();
     this.table = table;
     this.location = table.location();
@@ -150,30 +155,8 @@ public class BaseDeleteOrphanFilesSparkAction
     return this;
   }
 
-  // public BaseDeleteOrphanFilesSparkAction validFilesDF()
-
-  /**
-   * Provide a dataframe containing all of the paths of actual files in the file system
-   * located at `location`, in a column called `file_path` with string type.
-   *
-   * We also need to take into account the fact that the default job has a filter on the "older_than"
-   * information from the file (see third line of buildActualFileDf() ).
-   *
-   * Likely we would just say that this dataframe needs to include only files that passed the predicate already,
-   * or have the columns and information in it.
-   *
-   * That predicate is not configurable other than the `older_than` timestamp that the predicate uses,
-   * so users can either pass a dataframe of strings (representing actual full file paths, like s3://...../*.parquet),
-   * or _possibly_ a dataframe with the file name and some timestamp value to be filtered on.
-   *
-   * I would argue that since we're already allowing the user to pass in the dataframe they want, they can
-   * filter it themselves as well. But that can be changed based on your experience while developing.
-   */
-  // Goal - to remove calls to `listDirsRecursively` and `listDirRecursively`.
-  //      - happens to retrieve the "Actual Files", which could be obtainable in many ways
   public BaseDeleteOrphanFilesSparkAction withActualFilesDF(Dataset<Row> newActualFilesDF) {
     this.providedActualFilesDF = newActualFilesDF;
-    // this.actualFilesDF.createOrReplaceTempView("actual_files_%s");
     return this;
   }
 
@@ -196,10 +179,7 @@ public class BaseDeleteOrphanFilesSparkAction
     Dataset<Row> validContentFileDF = buildValidContentFileDF(table);
     Dataset<Row> validMetadataFileDF = buildValidMetadataFileDF(table);
     Dataset<Row> validFileDF = validContentFileDF.union(validMetadataFileDF);
-    // If there are serialization issues, let me know as we can possibly pass in a function (spark session) -> dataframe
-    // or explicitly broadcast it. But I don't think that's going to be necessary.
     Dataset<Row> actualFileDF = this.providedActualFilesDF == null ? buildActualFileDF() : providedActualFilesDF;
-    // Dataset<Row> actualFileDF = buildActualFileDF();
 
     Column actualFileName = filenameUDF.apply(actualFileDF.col("file_path"));
     Column validFileName = filenameUDF.apply(validFileDF.col("file_path"));
@@ -226,11 +206,6 @@ public class BaseDeleteOrphanFilesSparkAction
 
     Predicate<FileStatus> predicate = file -> file.getModificationTime() < olderThanTimestamp;
 
-    // hdfs://hoohaa/rauls/tbl/data/id=1/foo_bucket=8/dt_month=12
-    //
-    // Object Storage Location Provider path (adds randomization).
-    // s3://hoohaa/warehouse/table/data/0a71f597/<file.parquet>
-    //
     // list at most 3 levels and only dirs that have less than 10 direct sub dirs on the driver
     listDirRecursively(location, predicate, hadoopConf.value(), 3, 10, subDirs, matchingFiles);
 
