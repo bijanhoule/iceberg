@@ -53,7 +53,7 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
       ProcedureParameter.optional("location", DataTypes.StringType),
       ProcedureParameter.optional("dry_run", DataTypes.BooleanType),
       ProcedureParameter.optional("max_concurrent_deletes", DataTypes.IntegerType),
-      ProcedureParameter.optional("actual_file_table", DataTypes.StringType)
+      ProcedureParameter.optional("actual_files_table", DataTypes.StringType)
   };
 
   private static final StructType OUTPUT_TYPE = new StructType(new StructField[]{
@@ -97,7 +97,7 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
 
     Preconditions.checkArgument(
             tableWithActualFilePaths == null || (location == null && olderThanMillis == null),
-            "actual_file_table cannot be used with `location` or `older_than`"
+            "actual_files_table cannot be used with `location` or `older_than`"
     );
 
     return withIcebergTable(tableIdent, table -> {
@@ -124,16 +124,7 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
       }
 
       if (tableWithActualFilePaths != null) {
-        Preconditions.checkArgument(spark().catalog().tableExists(tableWithActualFilePaths),
-                "actual_file_table `" + tableWithActualFilePaths + "` does not exist"
-        );
-
-        List<String> columns = Arrays.asList(spark().table(tableWithActualFilePaths).columns());
-        if (!columns.contains("file_path")) {
-          throw new IllegalArgumentException("actual_file_table should have a 'file_path' column");
-        }
-
-        ((BaseDeleteOrphanFilesSparkAction) action).withActualFilesDF(spark().table(tableWithActualFilePaths));
+        action.actualFilesTable(tableWithActualFilePaths);
       }
 
       DeleteOrphanFiles.Result result = action.execute();

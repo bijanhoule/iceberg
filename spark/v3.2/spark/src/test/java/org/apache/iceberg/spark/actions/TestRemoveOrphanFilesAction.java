@@ -150,10 +150,11 @@ public abstract class TestRemoveOrphanFilesAction extends SparkTestBase {
     Assert.assertEquals("Action should find 1 file", invalidFiles, result2.orphanFileLocations());
     Assert.assertTrue("Invalid file should be present", fs.exists(new Path(invalidFiles.get(0))));
 
-    Dataset<Row> allFilesDF = spark.createDataset(allFiles, Encoders.STRING()).toDF("file_path");
-    DeleteOrphanFiles.Result result3 = ((BaseDeleteOrphanFilesSparkAction) actions.deleteOrphanFiles(table))
+    String actualFilesTableName = "actualFilesTable";
+    spark.createDataset(allFiles, Encoders.STRING()).toDF("file_path").createOrReplaceTempView(actualFilesTableName);
+    DeleteOrphanFiles.Result result3 = actions.deleteOrphanFiles(table)
         .deleteWith(s -> { })
-        .withActualFilesDF(allFilesDF)
+        .actualFilesTable(actualFilesTableName)
         .execute();
 
     Assert.assertEquals("Action should find 1 file", invalidFiles, result3.orphanFileLocations());

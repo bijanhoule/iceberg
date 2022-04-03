@@ -22,6 +22,7 @@ package org.apache.iceberg.spark.extensions;
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -316,31 +317,40 @@ public class TestRemoveOrphanFilesProcedure extends SparkExtensionsTestBase {
             "CALL %s.system.remove_orphan_files(table => '%s', max_concurrent_deletes => %s)",
             catalogName, tableIdent, -1));
 
-    AssertHelpers.assertThrows("Should reject calls with both actual_file_table and location args",
-        IllegalArgumentException.class, "actual_file_table cannot be used with",
+    AssertHelpers.assertThrows("Should reject calls with both actual_files_table and location args",
+        IllegalArgumentException.class, "actual_files_table cannot be used with",
         () -> sql(
-            "CALL %s.system.remove_orphan_files(table => '%s', actual_file_table => '', location => '')",
+            "CALL %s.system.remove_orphan_files(table => '%s', actual_files_table => '', location => '')",
             catalogName, tableIdent));
 
-    AssertHelpers.assertThrows("Should reject calls with both actual_file_table and older_than args",
-        IllegalArgumentException.class, "actual_file_table cannot be used with",
+    AssertHelpers.assertThrows("Should reject calls with both actual_files_table and older_than args",
+        IllegalArgumentException.class, "actual_files_table cannot be used with",
         () -> sql(
-            "CALL %s.system.remove_orphan_files(table => '%s', actual_file_table => '', older_than => TIMESTAMP '%s')",
+            "CALL %s.system.remove_orphan_files(table => '%s', actual_files_table => '', older_than => TIMESTAMP '%s')",
             catalogName, tableIdent, "1000-01-01 00:00:00"));
 
-    AssertHelpers.assertThrows("Should throw an error if actual_file_table does not exist",
-        IllegalArgumentException.class, "does not exist",
+    AssertHelpers.assertThrows("Should throw an error if actual_files_table does not exist",
+        ValidationException.class, "does not exist",
         () -> sql(
-            "CALL %s.system.remove_orphan_files(table => '%s', actual_file_table => 'missing')",
+            "CALL %s.system.remove_orphan_files(table => '%s', actual_files_table => 'missing')",
             catalogName, tableIdent));
 
     String tempViewName = "actual_files_test";
     spark.emptyDataFrame().createOrReplaceTempView(tempViewName);
 
-    AssertHelpers.assertThrows("Should throw an error if actual_file_table doesn't have the right schema",
-        IllegalArgumentException.class, "actual_file_table should have a 'file_path' column",
+    AssertHelpers.assertThrows("Should throw an error if actual_files_table is missing required column",
+        ValidationException.class, "is missing required `file_path` column",
         () -> sql(
-            "CALL %s.system.remove_orphan_files(table => '%s', actual_file_table => '%s')",
+            "CALL %s.system.remove_orphan_files(table => '%s', actual_files_table => '%s')",
+            catalogName, tableIdent, tempViewName));
+
+    spark.emptyDataFrame().createOrReplaceTempView(tempViewName);
+    spark.createDataset(new ArrayList<>(), Encoders.INT()).toDF("file_path").createOrReplaceTempView(tempViewName);
+
+    AssertHelpers.assertThrows("Should throw an error if actual_files_table has wrong schema",
+        ValidationException.class, "`file_path` column is not a string type",
+        () -> sql(
+            "CALL %s.system.remove_orphan_files(table => '%s', actual_files_table => '%s')",
             catalogName, tableIdent, tempViewName));
   }
 

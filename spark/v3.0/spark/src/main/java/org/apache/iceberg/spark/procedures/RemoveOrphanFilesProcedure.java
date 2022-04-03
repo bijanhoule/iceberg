@@ -55,7 +55,7 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
       ProcedureParameter.optional("location", DataTypes.StringType),
       ProcedureParameter.optional("dry_run", DataTypes.BooleanType),
       ProcedureParameter.optional("max_concurrent_deletes", DataTypes.IntegerType),
-      ProcedureParameter.optional("actual_file_table", DataTypes.StringType)
+      ProcedureParameter.optional("actual_files_table", DataTypes.StringType)
   };
 
   private static final StructType OUTPUT_TYPE = new StructType(new StructField[]{
@@ -99,7 +99,7 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
 
     Preconditions.checkArgument(
             tableWithActualFilePaths != null && (location != null || olderThanMillis != null),
-            "actual_file_table cannot be used with `location` or `older_than`"
+            "actual_files_table cannot be used with `location` or `older_than`"
     );
 
     return withIcebergTable(tableIdent, table -> {

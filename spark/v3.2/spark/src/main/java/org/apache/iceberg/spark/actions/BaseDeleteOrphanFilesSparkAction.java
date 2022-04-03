@@ -53,6 +53,8 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.expressions.UserDefinedFunction;
 import org.apache.spark.sql.functions;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.SerializableConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,10 +74,10 @@ import static org.apache.iceberg.TableProperties.GC_ENABLED_DEFAULT;
  * <p>
  * Configure an alternative delete method using {@link #deleteWith(Consumer)}.
  * <p>
- * For full control of the set of files being evaluated, use the {@link #withActualFilesDF(Dataset)} argument.  This
- * skips the directory listing - any files in the actualFilesDF provided which are not found in table metadata will
+ * For full control of the set of files being evaluated, use the {@link #actualFilesTable(String)} argument.  This
+ * skips the directory listing - any files in the actualFilesTable provided which are not found in table metadata will
  * be deleted.
- * Not compatible with `location` or `older_than` arguments - this assumes that the provided dataframe of actual files
+ * Not compatible with `location` or `older_than` arguments - this assumes that the provided table of actual files
  * has been filtered down to the table’s location and only includes files older than a reasonable retention interval.
  * <p>
  * <em>Note:</em> It is dangerous to call this action with a short retention interval as it might corrupt
@@ -155,8 +157,24 @@ public class BaseDeleteOrphanFilesSparkAction
     return this;
   }
 
-  public BaseDeleteOrphanFilesSparkAction withActualFilesDF(Dataset<Row> newActualFilesDF) {
-    this.providedActualFilesDF = newActualFilesDF;
+  @Override
+  public BaseDeleteOrphanFilesSparkAction actualFilesTable(String tableName) {
+    ValidationException.check(
+        spark().catalog().tableExists(tableName),
+        "actualFilesTable `" + tableName + "` does not exist");
+
+    try {
+      StructType schema = spark().table(tableName).schema();
+      StructField filePathField = schema.apply("file_path");
+      ValidationException.check(
+          filePathField.dataType() == DataTypes.StringType,
+          "actualFilesTable `" + tableName + "` - `file_path` column is not a string type");
+    } catch (IllegalArgumentException e) {
+      throw new ValidationException(
+          "actualFilesTable `" + tableName + "` is missing required `file_path` column");
+    }
+
+    this.providedActualFilesDF = spark().table(tableName);
     return this;
   }
 
