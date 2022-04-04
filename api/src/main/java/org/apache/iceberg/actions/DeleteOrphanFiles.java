@@ -21,6 +21,7 @@ package org.apache.iceberg.actions;
 
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
+import org.apache.iceberg.Table;
 
 /**
  * An action that deletes orphan metadata, data and delete files in a table.
@@ -89,7 +90,9 @@ public interface DeleteOrphanFiles extends Action<DeleteOrphanFiles, DeleteOrpha
    * @param tableName the table containing the actual files dataset.  Should have a single `file_path` string column
    * @return this for method chaining
    */
-  DeleteOrphanFiles actualFilesTable(String tableName);
+  default DeleteOrphanFiles actualFilesTable(String tableName) {
+    throw new UnsupportedOperationException(this.getClass().getName() + " does not implement actualFilesTable");
+  }
 
   /**
    * The action result that contains a summary of the execution.
