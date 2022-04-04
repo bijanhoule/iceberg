@@ -22,7 +22,6 @@ package org.apache.iceberg.spark.extensions;
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -345,7 +344,7 @@ public class TestRemoveOrphanFilesProcedure extends SparkExtensionsTestBase {
             catalogName, tableIdent, tempViewName));
 
     spark.emptyDataFrame().createOrReplaceTempView(tempViewName);
-    spark.createDataset(new ArrayList<>(), Encoders.INT()).toDF("file_path").createOrReplaceTempView(tempViewName);
+    spark.createDataset(Lists.newArrayList(), Encoders.INT()).toDF("file_path").createOrReplaceTempView(tempViewName);
 
     AssertHelpers.assertThrows("Should throw an error if actual_files_table has wrong schema",
         ValidationException.class, "`file_path` column is not a string type",
