@@ -21,7 +21,6 @@ package org.apache.iceberg.actions;
 
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
-import org.apache.iceberg.Table;
 
 /**
  * An action that deletes orphan metadata, data and delete files in a table.
