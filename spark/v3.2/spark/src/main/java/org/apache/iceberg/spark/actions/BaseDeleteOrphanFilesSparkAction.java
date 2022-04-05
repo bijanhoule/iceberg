@@ -168,7 +168,7 @@ public class BaseDeleteOrphanFilesSparkAction
       StructField filePathField = schema.apply("file_path");
       ValidationException.check(
           filePathField.dataType() == DataTypes.StringType,
-          "actualFilesTable `" + tableName + "` - `file_path` column is not a string type");
+          "Invalid schema for actual files table - 'file_path' column is not a string type");
     } catch (IllegalArgumentException e) {
       throw new ValidationException(
           "actualFilesTable `" + tableName + "` is missing required `file_path` column");

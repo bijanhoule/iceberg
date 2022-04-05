@@ -347,7 +347,7 @@ public class TestRemoveOrphanFilesProcedure extends SparkExtensionsTestBase {
     spark.createDataset(Lists.newArrayList(), Encoders.INT()).toDF("file_path").createOrReplaceTempView(tempViewName);
 
     AssertHelpers.assertThrows("Should throw an error if actual_files_table has wrong schema",
-        ValidationException.class, "`file_path` column is not a string type",
+        ValidationException.class, "Invalid schema",
         () -> sql(
             "CALL %s.system.remove_orphan_files(table => '%s', actual_files_table => '%s')",
             catalogName, tableIdent, tempViewName));
